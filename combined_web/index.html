@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Business Analytics System — Unified SaaS Web Application</title>
+  
+  <!-- Tailwind CSS & Google Fonts -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- React 18 & Babel for standalone browser runtime -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #0b0f19;
+      color: #f8fafc;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    .glass-panel {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    .glass-card {
+      background: rgba(30, 41, 59, 0.6);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    .glass-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(6, 182, 212, 0.3);
+    }
+
+    .btn-cyan {
+      background: linear-gradient(135deg, #06b6d4, #0284c7);
+      color: #0f172a;
+      font-weight: 800;
+      box-shadow: 0 4px 14px rgba(6, 182, 212, 0.35);
+      transition: all 0.2s ease;
+    }
+    .btn-cyan:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(6, 182, 212, 0.55);
+    }
+
+    .btn-blue {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: #ffffff;
+      font-weight: 700;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+      transition: all 0.2s ease;
+    }
+    .btn-blue:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5);
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="custom-scrollbar">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // STORAGE KEYS FOR PERSISTENT DATA
+    const STORAGE_KEY = 'ba_user_business_data_v2';
+    const SALARY_KEY = 'ba_employee_salaries_v1';
+    const CREDIT_KEY = 'ba_business_credits_v1';
+    const DEBIT_KEY = 'ba_business_debits_v1';
+
+    function getLocalData(key) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveLocalData(key, data) {
+      try {
+        localStorage.setItem(key, JSON.stringify(data));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function BusinessAnalyticsApp() {
+      const [activeTab, setActiveTab] = useState('dashboard');
+      const [records, setRecords] = useState(() => getLocalData(STORAGE_KEY));
+      const [salaries, setSalaries] = useState(() => getLocalData(SALARY_KEY));
+      const [credits, setCredits] = useState(() => getLocalData(CREDIT_KEY));
+      const [debits, setDebits] = useState(() => getLocalData(DEBIT_KEY));
+      
+      const [toast, setToast] = useState({ message: '', type: 'success' });
+      const [isChatOpen, setIsChatOpen] = useState(false);
+      const [chatMessages, setChatMessages] = useState([
+        {
+          id: 1,
+          sender: 'assistant',
+          text: '👋 **Welcome to Business Analytics AI Assistant!**\n\nI am connected to your live transactions, payroll, credit, and debit datasets. Ask me anything about your revenue, sales trends, net business balance, or employee salaries!',
+          suggestions: ['What is the overall performance?', 'What is our net business balance?', 'Which product has highest sales?', 'Employee salary summary']
+        }
+      ]);
+      const [chatInput, setChatInput] = useState('');
+      const [isTyping, setIsTyping] = useState(false);
+
+      const showToast = (message, type = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast({ message: '', type: 'success' }), 3500);
+      };
+
+      // KPI Calculations
+      const totalRevenue = records.reduce((sum, r) => sum + (Number(r.revenue) || 0), 0);
+      const totalSales = records.reduce((sum, r) => sum + (Number(r.quantity) || Number(r.sales) || 0), 0);
+      const totalCost = records.reduce((sum, r) => sum + (Number(r.cost) || 0), 0);
+      const totalProfit = records.reduce((sum, r) => sum + (Number(r.profit) || 0), 0);
+      const uniqueProducts = new Set(records.map(r => r.productName?.toLowerCase()).filter(Boolean)).size;
+      const uniqueCustomers = new Set(records.map(r => r.customerName?.toLowerCase()).filter(Boolean)).size;
+      const aov = records.length > 0 ? Math.round(totalRevenue / records.length) : 0;
+      const profitMargin = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 1000) / 10 : 0;
+
+      // Integrated Module Calculations
+      const totalSalaryPaid = salaries.filter(s => s.paymentStatus === 'PAID').reduce((sum, s) => sum + (Number(s.netSalary) || 0), 0);
+      const pendingSalary = salaries.filter(s => s.paymentStatus !== 'PAID').reduce((sum, s) => sum + (Number(s.netSalary) || 0), 0);
+      const totalGrossSalary = salaries.reduce((sum, s) => sum + (Number(s.netSalary) || 0), 0);
+
+      const totalCredit = credits.reduce((sum, c) => sum + (Number(c.creditAmount) || 0), 0);
+      const paidCredit = credits.filter(c => c.paymentStatus === 'PAID').reduce((sum, c) => sum + (Number(c.creditAmount) || 0), 0);
+      const pendingCredit = totalCredit - paidCredit;
+
+      const totalDebit = debits.reduce((sum, d) => sum + (Number(d.debitAmount) || 0), 0);
+      const paidDebit = debits.filter(d => d.paymentStatus === 'PAID').reduce((sum, d) => sum + (Number(d.debitAmount) || 0), 0);
+      const pendingDebit = totalDebit - paidDebit;
+
+      const netBusinessBalance = totalCredit - totalDebit;
+
+      // Groupings
+      const productsMap = {};
+      records.forEach(r => {
+        const p = r.productName || 'Other';
+        if (!productsMap[p]) productsMap[p] = { name: p, revenue: 0, quantity: 0, profit: 0 };
+        productsMap[p].revenue += Number(r.revenue) || 0;
+        productsMap[p].quantity += Number(r.quantity) || Number(r.sales) || 0;
+        productsMap[p].profit += Number(r.profit) || 0;
+      });
+      const topProducts = Object.values(productsMap).sort((a, b) => b.revenue - a.revenue);
+
+      const regionMap = {};
+      records.forEach(r => {
+        const reg = r.region || 'North';
+        if (!regionMap[reg]) regionMap[reg] = { region: reg, revenue: 0, orders: 0 };
+        regionMap[reg].revenue += Number(r.revenue) || 0;
+        regionMap[reg].orders += 1;
+      });
+      const regionsList = Object.values(regionMap).sort((a, b) => b.revenue - a.revenue);
+
+      const handleSendChat = (customText = null) => {
+        const query = (customText || chatInput).trim();
+        if (!query || isTyping) return;
+
+        const userMsg = { id: Date.now(), sender: 'user', text: query };
+        setChatMessages(prev => [...prev, userMsg]);
+        setChatInput('');
+        setIsTyping(true);
+
+        setTimeout(() => {
+          let reply = '';
+          let sugg = ['Overall Performance', 'Net Business Balance', 'Top Products'];
+          const q = query.toLowerCase();
+
+          if (q.includes('salary') || q.includes('payroll') || q.includes('employee')) {
+            reply = `💼 **Employee Payroll Summary:**\n\n• **Gross Payroll**: ₹${totalGrossSalary.toLocaleString('en-IN')}\n• **Total Paid**: ₹${totalSalaryPaid.toLocaleString('en-IN')}\n• **Pending Salary**: ₹${pendingSalary.toLocaleString('en-IN')}\n• **Active Staff**: ${salaries.length} records`;
+            sugg = ['Business Credit', 'Business Debit', 'Net Business Balance'];
+          } else if (q.includes('credit') || q.includes('receivable')) {
+            reply = `📥 **Business Credit Status:**\n\n• **Total Credit**: ₹${totalCredit.toLocaleString('en-IN')}\n• **Paid / Recovered**: ₹${paidCredit.toLocaleString('en-IN')}\n• **Pending**: ₹${pendingCredit.toLocaleString('en-IN')}`;
+            sugg = ['Business Debit', 'Net Business Balance', 'Overall Summary'];
+          } else if (q.includes('debit') || q.includes('payable') || q.includes('expense')) {
+            reply = `📤 **Business Debit Status:**\n\n• **Total Debit**: ₹${totalDebit.toLocaleString('en-IN')}\n• **Paid Outflows**: ₹${paidDebit.toLocaleString('en-IN')}\n• **Pending Payables**: ₹${pendingDebit.toLocaleString('en-IN')}`;
+            sugg = ['Business Credit', 'Net Business Balance', 'Employee Salary'];
+          } else if (q.includes('balance') || q.includes('working capital')) {
+            reply = `⚖️ **Net Business Balance (Credit - Debit):**\n\n• **Total Credit (Receivables)**: ₹${totalCredit.toLocaleString('en-IN')}\n• **Total Debit (Payables)**: ₹${totalDebit.toLocaleString('en-IN')}\n• **Net Balance**: **₹${netBusinessBalance.toLocaleString('en-IN')}** (${netBusinessBalance >= 0 ? 'Surplus' : 'Deficit'})`;
+            sugg = ['Overall Performance', 'Employee Salary', 'Top Products'];
+          } else if (records.length === 0) {
+            reply = `📊 **No sales data available.** Please add records in **Data Management** or enter Salaries/Credits/Debits!`;
+          } else if (q.includes('overall') || q.includes('summary') || q.includes('kpi')) {
+            reply = `📊 **Executive Business Performance:**\n\n• **Gross Revenue**: ₹${totalRevenue.toLocaleString('en-IN')}\n• **Total Cost**: ₹${totalCost.toLocaleString('en-IN')}\n• **Net Profit**: ₹${totalProfit.toLocaleString('en-IN')} (**${profitMargin}% Margin**)\n• **Net Business Balance**: ₹${netBusinessBalance.toLocaleString('en-IN')}`;
+            sugg = ['Top Products', 'Net Business Balance', 'Employee Salary'];
+          } else {
+            reply = `I analyzed your live system metrics:\n• **Sales Revenue**: ₹${totalRevenue.toLocaleString('en-IN')}\n• **Net Balance**: ₹${netBusinessBalance.toLocaleString('en-IN')}\n• **Payroll**: ₹${totalGrossSalary.toLocaleString('en-IN')}`;
+          }
+
+          setChatMessages(prev => [...prev, { id: Date.now() + 1, sender: 'assistant', text: reply, suggestions: sugg }]);
+          setIsTyping(false);
+        }, 300);
+      };
+
+      const downloadTemplate = () => {
+        const csv = "Date,Product Name,Category,Quantity,Sales,Revenue,Cost,Profit,Customer Name,Region,Salesperson\n2026-08-01,Wireless Keyboard,Electronics,10,10,21990,12000,9990,Aarav Tech,South,Rahul Sharma\n2026-08-05,USB-C Hub Pro,Electronics,25,25,39975,21250,18725,Priya Global,West,Sneha Patel\n2026-08-10,A4 Paper Reams,Office,50,50,16000,9000,7000,Green Leaf Ltd,North,Amit Verma\n2026-08-15,WiFi 6 Router,Networking,8,8,33592,19200,14392,Apex Cloud,East,Pooja Nair";
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'business_analytics_sample_template.csv';
+        a.click();
+        showToast('Sample template downloaded', 'success');
+      };
+
+      return (
+        <div className="min-h-screen flex bg-[#0b0f19] text-[#f8fafc]">
+          {toast.message && (
+            <div className="fixed bottom-6 right-24 bg-[#10b981] text-white px-5 py-3 rounded-lg shadow-2xl z-50 flex items-center gap-3 font-semibold text-sm">
+              <span>✓</span> {toast.message}
+            </div>
+          )}
+
+          {/* SIDEBAR */}
+          <aside className="w-64 bg-[#0d1322] border-r border-white/10 flex flex-col fixed top-0 bottom-0 left-0 z-40">
+            <div className="h-[70px] flex items-center gap-3 px-5 border-b border-white/10">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center font-extrabold text-white text-lg shadow-[0_0_15px_rgba(6,182,212,0.4)]">
+                BA
+              </div>
+              <div>
+                <h1 className="text-sm font-extrabold text-white tracking-tight">Business Analytics</h1>
+                <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest">Enterprise SaaS</p>
+              </div>
+            </div>
+
+            <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+              <div className="text-[10px] uppercase font-bold text-slate-500 px-3 py-1">Analytics Core</div>
+              {[
+                { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+                { id: 'data', label: 'Data Management', icon: '📝' },
+                { id: 'analytics', label: 'Analytics', icon: '📈' },
+                { id: 'insights', label: 'Business Insights', icon: '💡' },
+                { id: 'reports', label: 'Reports & Export', icon: '📑' },
+              ].map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                    activeTab === item.id 
+                      ? 'bg-gradient-to-r from-cyan-500/20 to-blue-600/30 text-cyan-400 border border-cyan-500/40' 
+                      : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                  }`}
+                >
+                  <span className="text-lg">{item.icon}</span>
+                  <span>{item.label}</span>
+                </button>
+              ))}
+
+              <div className="text-[10px] uppercase font-bold text-slate-500 px-3 pt-3 pb-1">Business Operations</div>
+              {[
+                { id: 'salary', label: 'Employee Salary', icon: '💼' },
+                { id: 'credit', label: 'Business Credit', icon: '📥' },
+                { id: 'debit', label: 'Business Debit', icon: '📤' },
+              ].map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                    activeTab === item.id 
+                      ? 'bg-gradient-to-r from-cyan-500/20 to-blue-600/30 text-cyan-400 border border-cyan-500/40' 
+                      : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                  }`}
+                >
+                  <span className="text-lg">{item.icon}</span>
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </nav>
+          </aside>
+
+          {/* MAIN WRAPPER */}
+          <div className="flex-1 ml-64 flex flex-col min-w-0">
+            <header className="h-[70px] bg-[#0d1322]/80 backdrop-blur-md border-b border-white/10 px-8 flex items-center justify-between sticky top-0 z-30">
+              <div>
+                <h2 className="text-lg font-extrabold text-white capitalize">
+                  {activeTab === 'salary' && 'Employee Salary & Payroll Management'}
+                  {activeTab === 'credit' && 'Business Credit (Accounts Receivable)'}
+                  {activeTab === 'debit' && 'Business Debit (Accounts Payable & Expenses)'}
+                  {activeTab !== 'salary' && activeTab !== 'credit' && activeTab !== 'debit' && activeTab}
+                </h2>
+                <p className="text-xs text-slate-400">Strictly dynamic calculations from user data</p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button onClick={downloadTemplate} className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs font-semibold text-slate-300">
+                  📄 CSV Template
+                </button>
+              </div>
+            </header>
+
+            <main className="p-8 flex-1 space-y-6">
+              {/* DASHBOARD VIEW */}
+              {activeTab === 'dashboard' && (
+                <div className="space-y-6">
+                  {/* INTEGRATED BUSINESS BALANCE BANNER */}
+                  <div className="glass-panel p-6 border-cyan-500/30">
+                    <div className="flex justify-between items-center mb-4">
+                      <div>
+                        <span className="text-xs font-bold text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded-full border border-cyan-500/20">
+                          ⚖️ Integrated Business Balance = Total Credit - Total Debit
+                        </span>
+                        <h3 className="text-lg font-extrabold text-white mt-2">Working Capital & Financial Health</h3>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => setActiveTab('salary')} className="btn-cyan px-3 py-1 rounded-lg text-xs">💼 Salaries</button>
+                        <button onClick={() => setActiveTab('credit')} className="btn-cyan px-3 py-1 rounded-lg text-xs">📥 Credits</button>
+                        <button onClick={() => setActiveTab('debit')} className="btn-cyan px-3 py-1 rounded-lg text-xs">📤 Debits</button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="glass-card p-4">
+                        <div className="text-xs text-slate-400 uppercase font-bold">📥 Total Credit</div>
+                        <div className="text-xl font-extrabold text-cyan-400 mt-1">₹{totalCredit.toLocaleString('en-IN')}</div>
+                        <div className="text-[11px] text-slate-400 mt-1">Paid: ₹{paidCredit.toLocaleString('en-IN')}</div>
+                      </div>
+
+                      <div className="glass-card p-4">
+                        <div className="text-xs text-slate-400 uppercase font-bold">📤 Total Debit</div>
+                        <div className="text-xl font-extrabold text-red-400 mt-1">₹{totalDebit.toLocaleString('en-IN')}</div>
+                        <div className="text-[11px] text-slate-400 mt-1">Paid: ₹{paidDebit.toLocaleString('en-IN')}</div>
+                      </div>
+
+                      <div className="glass-card p-4">
+                        <div className="text-xs text-slate-400 uppercase font-bold">💼 Total Payroll</div>
+                        <div className="text-xl font-extrabold text-purple-400 mt-1">₹{totalGrossSalary.toLocaleString('en-IN')}</div>
+                        <div className="text-[11px] text-slate-400 mt-1">Paid: ₹{totalSalaryPaid.toLocaleString('en-IN')}</div>
+                      </div>
+
+                      <div className={`glass-card p-4 border ${netBusinessBalance >= 0 ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-red-500/40 bg-red-500/10'}`}>
+                        <div className="text-xs text-slate-400 uppercase font-bold">💎 Net Balance</div>
+                        <div className={`text-xl font-extrabold mt-1 ${netBusinessBalance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          ₹{netBusinessBalance.toLocaleString('en-IN')}
+                        </div>
+                        <div className="text-[11px] text-slate-300 mt-1">{netBusinessBalance >= 0 ? 'Surplus' : 'Deficit'}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 8 DYNAMIC SALES KPIS */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    {[
+                      { title: 'Total Revenue', value: `₹${totalRevenue.toLocaleString('en-IN')}`, icon: '💰', desc: `${records.length} Transactions` },
+                      { title: 'Total Sales', value: `${totalSales.toLocaleString('en-IN')} Units`, icon: '🛒', desc: 'Gross Volume' },
+                      { title: 'Total Cost', value: `₹${totalCost.toLocaleString('en-IN')}`, icon: '📉', desc: 'COGS Expense' },
+                      { title: 'Net Profit', value: `₹${totalProfit.toLocaleString('en-IN')}`, icon: '📈', desc: `${profitMargin}% Margin` },
+                    ].map((k, idx) => (
+                      <div key={idx} className="glass-card p-5 flex flex-col justify-between">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-xs font-bold text-slate-400 uppercase">{k.title}</span>
+                          <span className="text-xl">{k.icon}</span>
+                        </div>
+                        <div className="text-2xl font-extrabold text-white">{k.value}</div>
+                        <div className="text-xs text-slate-500 mt-1">{k.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* SALARY MODULE VIEW */}
+              {activeTab === 'salary' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="glass-card p-5">
+                      <div className="text-xs text-slate-400 font-bold uppercase">Total Employees</div>
+                      <div className="text-2xl font-extrabold text-white mt-1">{salaries.length} Staff</div>
+                    </div>
+                    <div className="glass-card p-5">
+                      <div className="text-xs text-slate-400 font-bold uppercase">Salary Paid</div>
+                      <div className="text-2xl font-extrabold text-emerald-400 mt-1">₹{totalSalaryPaid.toLocaleString('en-IN')}</div>
+                    </div>
+                    <div className="glass-card p-5">
+                      <div className="text-xs text-slate-400 font-bold uppercase">Pending Salary</div>
+                      <div className="text-2xl font-extrabold text-amber-400 mt-1">₹{pendingSalary.toLocaleString('en-IN')}</div>
+                    </div>
+                    <div className="glass-card p-5">
+                      <div className="text-xs text-slate-400 font-bold uppercase">Gross Payroll</div>
+                      <div className="text-2xl font-extrabold text-cyan-400 mt-1">₹{totalGrossSalary.toLocaleString('en-IN')}</div>
+                    </div>
+                  </div>
+
+                  <div className="glass-panel p-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-base font-bold text-white">Employee Payroll Records</h3>
+                      <button
+                        onClick={() => {
+                          const name = prompt('Employee Name:');
+                          if (!name) return;
+                          const basic = prompt('Basic Salary (₹):') || '0';
+                          const bonus = prompt('Bonus (₹):') || '0';
+                          const ded = prompt('Deduction (₹):') || '0';
+                          const dept = prompt('Department (Sales/IT/Operations/HR):') || 'Sales';
+                          
+                          const newSal = {
+                            id: Date.now(),
+                            employeeName: name,
+                            employeeId: `EMP-${Math.floor(100 + Math.random()*900)}`,
+                            department: dept,
+                            salaryMonth: new Date().toISOString().substring(0, 7),
+                            basicSalary: Number(basic) || 0,
+                            bonus: Number(bonus) || 0,
+                            deduction: Number(ded) || 0,
+                            netSalary: (Number(basic) || 0) + (Number(bonus) || 0) - (Number(ded) || 0),
+                            paymentStatus: 'PAID',
+                            paymentDate: new Date().toISOString().split('T')[0]
+                          };
+                          const updated = [newSal, ...salaries];
+                          saveLocalData(SALARY_KEY, updated);
+                          setSalaries(updated);
+                          showToast('Salary record added', 'success');
+                        }}
+                        className="btn-cyan px-4 py-2 rounded-lg text-xs"
+                      >
+                        ➕ Add Employee Salary
+                      </button>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-white/5 text-slate-400 border-b border-white/10 uppercase text-[10px]">
+                          <tr>
+                            <th className="p-3">Employee</th>
+                            <th className="p-3">ID</th>
+                            <th className="p-3">Department</th>
+                            <th className="p-3">Month</th>
+                            <th className="p-3">Basic</th>
+                            <th className="p-3">Bonus</th>
+                            <th className="p-3">Deduction</th>
+                            <th className="p-3">Net Salary</th>
+                            <th className="p-3">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {salaries.map(s => (
+                            <tr key={s.id}>
+                              <td className="p-3 font-bold text-white">{s.employeeName}</td>
+                              <td className="p-3 text-cyan-400">{s.employeeId}</td>
+                              <td className="p-3">{s.department}</td>
+                              <td className="p-3 text-slate-400">{s.salaryMonth}</td>
+                              <td className="p-3">₹{Number(s.basicSalary).toLocaleString('en-IN')}</td>
+                              <td className="p-3 text-emerald-400">+₹{Number(s.bonus).toLocaleString('en-IN')}</td>
+                              <td className="p-3 text-red-400">-₹{Number(s.deduction).toLocaleString('en-IN')}</td>
+                              <td className="p-3 font-bold text-cyan-400">₹{Number(s.netSalary).toLocaleString('en-IN')}</td>
+                              <td className="p-3"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${s.paymentStatus === 'PAID' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>{s.paymentStatus}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* CREDIT MODULE VIEW */}
+              {activeTab === 'credit' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="glass-card p-5">
+                      <div className="text-xs text-slate-400 font-bold uppercase">Total Credit</div>
+                      <div className="text-2xl font-extrabold text-cyan-400 mt-1">₹{totalCredit.toLocaleString('en-IN')}</div>
+                    </div>
+                    <div className="glass-card p-5">
+                      <div className="text-xs text-slate-400 font-bold uppercase">Paid Credit</div>
+                      <div className="text-2xl font-extrabold text-emerald-400 mt-1">₹{paidCredit.toLocaleString('en-IN')}</div>
+                    </div>
+                    <div className="glass-card p-5">
+                      <div className="text-xs text-slate-400 font-bold uppercase">Pending Credit</div>
+                      <div className="text-2xl font-extrabold text-amber-400 mt-1">₹{pendingCredit.toLocaleString('en-IN')}</div>
+                    </div>
+                    <div className="glass-card p-5">
+                      <div className="text-xs text-slate-400 font-bold uppercase">Transactions</div>
+                      <div className="text-2xl font-extrabold text-white mt-1">{credits.length} Invoices</div>
+                    </div>
+                  </div>
+
+                  <div className="glass-panel p-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-base font-bold text-white">Credit Receivables Ledger</h3>
+                      <button
+                        onClick={() => {
+                          const name = prompt('Customer/Business Name:');
+                          if (!name) return;
+                          const amt = prompt('Credit Amount (₹):') || '0';
+                          const desc = prompt('Description:') || 'Invoice';
+                          
+                          const newCrd = {
+                            id: Date.now(),
+                            date: new Date().toISOString().split('T')[0],
+                            customerName: name,
+                            description: desc,
+                            creditAmount: Number(amt) || 0,
+                            dueDate: '',
+                            paymentStatus: 'PENDING'
+                          };
+                          const updated = [newCrd, ...credits];
+                          saveLocalData(CREDIT_KEY, updated);
+                          setCredits(updated);
+                          showToast('Credit record added', 'success');
+                        }}
+                        className="btn-cyan px-4 py-2 rounded-lg text-xs"
+                      >
+                        ➕ Add Credit Record
+                      </button>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-white/5 text-slate-400 border-b border-white/10 uppercase text-[10px]">
+                          <tr>
+                            <th className="p-3">Date</th>
+                            <th className="p-3">Customer / Business</th>
+                            <th className="p-3">Description</th>
+                            <th className="p-3">Credit Amount</th>
+                            <th className="p-3">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {credits.map(c => (
+                            <tr key={c.id}>
+                              <td className="p-3 text-slate-400">{c.date}</td>
+                              <td className="p-3 font-bold text-white">{c.customerName}</td>
+                              <td className="p-3 text-slate-400">{c.description}</td>
+                              <td className="p-3 font-bold text-cyan-400">₹{Number(c.creditAmount).toLocaleString('en-IN')}</td>
+                              <td className="p-3"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${c.paymentStatus === 'PAID' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>{c.paymentStatus}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* DEBIT MODULE VIEW */}
+              {activeTab === 'debit' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="glass-card p-5">
+                      <div className="text-xs text-slate-400 font-bold uppercase">Total Debit</div>
+                      <div className="text-2xl font-extrabold text-red-400 mt-1">₹{totalDebit.toLocaleString('en-IN')}</div>
+                    </div>
+                    <div className="glass-card p-5">
+                      <div className="text-xs text-slate-400 font-bold uppercase">Paid Debit</div>
+                      <div className="text-2xl font-extrabold text-emerald-400 mt-1">₹{paidDebit.toLocaleString('en-IN')}</div>
+                    </div>
+                    <div className="glass-card p-5">
+                      <div className="text-xs text-slate-400 font-bold uppercase">Pending Debit</div>
+                      <div className="text-2xl font-extrabold text-amber-400 mt-1">₹{pendingDebit.toLocaleString('en-IN')}</div>
+                    </div>
+                    <div className="glass-card p-5">
+                      <div className="text-xs text-slate-400 font-bold uppercase">Transactions</div>
+                      <div className="text-2xl font-extrabold text-white mt-1">{debits.length} Bills</div>
+                    </div>
+                  </div>
+
+                  <div className="glass-panel p-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-base font-bold text-white">Debit Expenses & Payables</h3>
+                      <button
+                        onClick={() => {
+                          const vendor = prompt('Vendor/Business Name:');
+                          if (!vendor) return;
+                          const amt = prompt('Debit Amount (₹):') || '0';
+                          const cat = prompt('Category (Inventory/Rent/Utilities/Operations):') || 'Operations';
+                          
+                          const newDeb = {
+                            id: Date.now(),
+                            date: new Date().toISOString().split('T')[0],
+                            vendorName: vendor,
+                            description: 'Expense bill',
+                            category: cat,
+                            debitAmount: Number(amt) || 0,
+                            paymentStatus: 'PAID'
+                          };
+                          const updated = [newDeb, ...debits];
+                          saveLocalData(DEBIT_KEY, updated);
+                          setDebits(updated);
+                          showToast('Debit record added', 'success');
+                        }}
+                        className="btn-cyan px-4 py-2 rounded-lg text-xs"
+                      >
+                        ➕ Add Debit Record
+                      </button>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-white/5 text-slate-400 border-b border-white/10 uppercase text-[10px]">
+                          <tr>
+                            <th className="p-3">Date</th>
+                            <th className="p-3">Vendor / Business</th>
+                            <th className="p-3">Category</th>
+                            <th className="p-3">Debit Amount</th>
+                            <th className="p-3">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {debits.map(d => (
+                            <tr key={d.id}>
+                              <td className="p-3 text-slate-400">{d.date}</td>
+                              <td className="p-3 font-bold text-white">{d.vendorName}</td>
+                              <td className="p-3"><span className="bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded text-[10px]">{d.category}</span></td>
+                              <td className="p-3 font-bold text-red-400">₹{Number(d.debitAmount).toLocaleString('en-IN')}</td>
+                              <td className="p-3"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${d.paymentStatus === 'PAID' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>{d.paymentStatus}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* DATA MANAGEMENT VIEW */}
+              {activeTab === 'data' && (
+                <div className="glass-panel p-6">
+                  <h3 className="text-base font-bold text-white mb-4">Sales Ledger</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-white/5 text-slate-400 border-b border-white/10">
+                        <tr>
+                          <th className="p-3">Date</th>
+                          <th className="p-3">Product</th>
+                          <th className="p-3">Qty</th>
+                          <th className="p-3">Revenue</th>
+                          <th className="p-3">Profit</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {records.map(r => (
+                          <tr key={r.id}>
+                            <td className="p-3 text-slate-400">{r.date}</td>
+                            <td className="p-3 font-bold text-white">{r.productName}</td>
+                            <td className="p-3">{r.quantity}</td>
+                            <td className="p-3 text-cyan-400 font-bold">₹{Number(r.revenue).toLocaleString('en-IN')}</td>
+                            <td className="p-3 text-emerald-400 font-bold">+₹{Number(r.profit).toLocaleString('en-IN')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* REPORTS VIEW */}
+              {activeTab === 'reports' && (
+                <div className="glass-panel p-6 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-base font-bold text-white">Full Business Balance Statement</h3>
+                    <button onClick={() => window.print()} className="btn-cyan px-4 py-2 rounded-lg text-xs">🖨️ Print / Save PDF</button>
+                  </div>
+                  <div className="bg-white/5 p-4 rounded-xl text-xs space-y-2 text-slate-300">
+                    <div className="flex justify-between"><span>Total Credit Receivables:</span><strong className="text-cyan-400">₹{totalCredit.toLocaleString('en-IN')}</strong></div>
+                    <div className="flex justify-between"><span>Total Debit Outflows:</span><strong className="text-red-400">-₹{totalDebit.toLocaleString('en-IN')}</strong></div>
+                    <div className="flex justify-between border-t border-white/10 pt-2 text-sm font-extrabold text-emerald-400"><span>Net Business Balance:</span><span>₹{netBusinessBalance.toLocaleString('en-IN')}</span></div>
+                  </div>
+                </div>
+              )}
+            </main>
+          </div>
+
+          {/* CHATBOT BUTTON */}
+          <div
+            onClick={() => setIsChatOpen(!isChatOpen)}
+            className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 text-white flex items-center justify-center cursor-pointer shadow-2xl z-50 hover:scale-105 transition-all"
+          >
+            <span className="text-2xl">{isChatOpen ? '✕' : '🤖'}</span>
+          </div>
+
+          {/* CHATBOT WINDOW */}
+          {isChatOpen && (
+            <div className="fixed bottom-24 right-6 w-96 h-[520px] bg-[#0d1322]/95 backdrop-blur-2xl border border-cyan-500/40 rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden">
+              <div className="p-4 bg-slate-900 border-b border-white/10 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🤖</span>
+                  <span className="text-xs font-bold text-white">AI Analytics Assistant</span>
+                </div>
+                <button onClick={() => setChatMessages([])} className="text-xs text-slate-400 hover:text-white">🗑️</button>
+              </div>
+
+              <div className="flex-1 p-4 overflow-y-auto space-y-3 text-xs custom-scrollbar">
+                {chatMessages.map(msg => (
+                  <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
+                    <div className={`p-3 rounded-xl max-w-[85%] ${msg.sender === 'user' ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-200 border border-white/10'}`}>
+                      <div className="whitespace-pre-line">{msg.text}</div>
+                    </div>
+                    {msg.suggestions && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {msg.suggestions.map((sug, i) => (
+                          <button
+                            key={i}
+                            onClick={() => handleSendChat(sug)}
+                            className="bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 px-2 py-1 rounded-full text-[10px]"
+                          >
+                            {sug}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-3 bg-slate-900 border-t border-white/10 flex gap-2">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendChat()}
+                  placeholder="Ask about salary, credit, debit..."
+                  className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none"
+                />
+                <button onClick={() => handleSendChat()} className="btn-cyan px-3 py-2 rounded-lg text-xs">➤</button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.render(<BusinessAnalyticsApp />, document.getElementById('root'));
+  </script>
+</body>
+</html>
