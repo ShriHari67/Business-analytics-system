@@ -3,6 +3,8 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Toast from './components/Toast';
 import Chatbot from './components/Chatbot';
+import Login from './pages/Login';
+import { useAuth } from './context/AuthContext';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -65,6 +67,8 @@ const TAB_METADATA = {
 };
 
 export default function App() {
+  const { isAuthenticated } = useAuth();
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [records, setRecords] = useState(() => getStoredRecords());
@@ -115,6 +119,10 @@ export default function App() {
     });
     showToast('Filters reset to default view', 'info');
   };
+
+  if (!isAuthenticated) {
+    return <Login />;
+  }
 
   const currentMeta = TAB_METADATA[activeTab] || TAB_METADATA.dashboard;
 

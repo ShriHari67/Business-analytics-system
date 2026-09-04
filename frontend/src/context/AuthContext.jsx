@@ -27,33 +27,31 @@ export function AuthProvider({ children }) {
     }
   }, [user, token]);
 
+  // Demo authentication: any non-empty username/password is accepted.
+  // This is intentionally client-side for presentation/demo purposes.
   const login = async (username, password) => {
     setLoading(true);
     setAuthError('');
-    try {
-      const res = await loginUser(username, password);
-      if (res.success && res.data) {
-        setUser({
-          id: res.data.id,
-          username: res.data.username,
-          email: res.data.email,
-          fullName: res.data.fullName,
-          role: res.data.role || 'USER',
-        });
-        setToken(res.data.token || 'demo-auth-token-2026');
-        setLoading(false);
-        return { success: true };
-      } else {
-        setAuthError(res.message || 'Invalid username or password');
-        setLoading(false);
-        return { success: false, message: res.message };
-      }
-    } catch (err) {
-      const msg = err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
+
+    if (!username?.trim() || !password?.trim()) {
+      const msg = 'Please enter a username and password.';
       setAuthError(msg);
       setLoading(false);
       return { success: false, message: msg };
     }
+
+    // No backend authentication is required for the demo login.
+    setUser({
+      id: 'demo-user',
+      username: username.trim(),
+      email: username.includes('@') ? username.trim() : `${username.trim()}@demo.local`,
+      fullName: username.trim(),
+      role: 'ADMIN',
+    });
+    setToken('demo-auth-token-2026');
+
+    setLoading(false);
+    return { success: true };
   };
 
   const register = async (userData) => {
